@@ -4,6 +4,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.annotation.VisibleForTesting;
+import android.support.test.espresso.IdlingResource;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Pair;
 import android.view.Menu;
@@ -21,13 +24,16 @@ import com.udacity.gradle.builditbigger.backend.myApi.MyApi;
 
 import java.io.IOException;
 
+import javax.annotation.Nullable;
 
-class EndpointsAsyncTask extends AsyncTask<Pair<Context, String>, Void, String> {
+
+class EndpointsAsyncTask extends AsyncTask<Pair<Context, SimpleIdlingResource>, Void, String> {
     private static MyApi myApiService = null;
     private Context context;
+    private SimpleIdlingResource idlingResource;
 
     @Override
-    protected String doInBackground(Pair<Context, String>... params) {
+    protected String doInBackground(Pair<Context, SimpleIdlingResource>... params) {
         if(myApiService == null) {  // Only do this once
             MyApi.Builder builder = new MyApi.Builder(AndroidHttp.newCompatibleTransport(),
                     new AndroidJsonFactory(), null)
@@ -47,10 +53,15 @@ class EndpointsAsyncTask extends AsyncTask<Pair<Context, String>, Void, String> 
         }
 
         context = params[0].first.getApplicationContext();
-        String name = params[0].second;
+        idlingResource = params[0].second;
+
+        // The IdlingResource is null in production.
+        if (idlingResource != null) {
+            idlingResource.setIdleState(false);
+        }
 
         try {
-            return myApiService.sayHi(name).execute().getData();
+            return myApiService.sayHi("Name").execute().getData();
         } catch (IOException e) {
             return e.getMessage();
         }
@@ -62,11 +73,17 @@ class EndpointsAsyncTask extends AsyncTask<Pair<Context, String>, Void, String> 
         intent.putExtra("joke", result);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         context.startActivity(intent);
+
+        if (idlingResource != null) {
+            idlingResource.setIdleState(true);
+        }
     }
 }
 
 
 public class MainActivity extends AppCompatActivity {
+
+    @Nullable private SimpleIdlingResource mIdlingResource;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -103,8 +120,20 @@ public class MainActivity extends AppCompatActivity {
 
     public void launchJokeActivity(View view) {
 
-        new EndpointsAsyncTask().execute(new Pair<>(getApplicationContext(), "Dinos"));
+        new EndpointsAsyncTask().execute(new Pair<>(getApplicationContext(), mIdlingResource));
 
+    }
+
+    /**
+     * Only called from test, creates and returns a new {@link SimpleIdlingResource}.
+     */
+    @VisibleForTesting
+    @NonNull
+    public IdlingResource getIdlingResource() {
+        if (mIdlingResource == null) {
+            mIdlingResource = new SimpleIdlingResource();
+        }
+        return mIdlingResource;
     }
 
 
